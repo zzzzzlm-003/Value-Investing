@@ -20,7 +20,7 @@ OPERATING_MARGIN_ANNOTATIONS = {
 }
 
 
-def render_epv_formula_and_adjustments(breakdown: Dict, key_prefix: str = "epv") -> Dict:
+def render_epv_formula_and_adjustments(breakdown: Dict, key_prefix: str = "epv", currency: str = "USD") -> Dict:
     """
     展示 EPV 公式与各调整分项（依据 + 可手动输入）。
     返回用户输入覆盖值 { key: value } 供计算器使用。
@@ -38,7 +38,8 @@ def render_epv_formula_and_adjustments(breakdown: Dict, key_prefix: str = "epv")
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("营业收入 ($)", f"{revenue/1e9:.2f}B")
+        ccy = (currency or "USD").upper()
+        st.metric(f"营业收入（十亿 {ccy}）", f"{revenue/1e9:.2f}")
     with col2:
         st.metric("平滑营业利润率", f"{smoothed_margin:.2%}")
     with col3:
@@ -48,8 +49,9 @@ def render_epv_formula_and_adjustments(breakdown: Dict, key_prefix: str = "epv")
     for item in breakdown.get('adjustments_detail', []):
         suggested = item.get('suggested_value', item['adjustment_value'])
         default_val = float(suggested) if suggested is not None else float(item['adjustment_value'])
-        label_suggest = f"建议值: ${default_val/1e9:.2f}B" if default_val != 0 else "建议值: 根据年报附注填写后手动输入"
-        with st.expander(f"✏️ {item['name']} — 报表/原值: ${item['original_value']/1e9:.2f}B | {label_suggest}"):
+        ccy = (currency or "USD").upper()
+        label_suggest = f"建议值: {default_val/1e9:.2f}（十亿 {ccy}）" if default_val != 0 else "建议值: 根据年报附注填写后手动输入"
+        with st.expander(f"✏️ {item['name']} — 报表/原值: {item['original_value']/1e9:.2f}（十亿 {ccy}） | {label_suggest}"):
             st.markdown("**依据**: " + item['rationale'])
             val = st.number_input(
                 "调整额 (美元，正=加回营业利润)；可修改建议值",
@@ -62,22 +64,23 @@ def render_epv_formula_and_adjustments(breakdown: Dict, key_prefix: str = "epv")
     return overrides
 
 
-def render_wacc_table_lecture3_p13(wacc_breakdown: Dict, key_prefix: str = "wacc") -> Dict:
+def render_wacc_table_lecture3_p13(wacc_breakdown: Dict, key_prefix: str = "wacc", currency: str = "USD") -> Dict:
     """
     WACC 计算表（Lecture 3 第13页格式），用标准表格展示，各项可手动输入。
     """
-    st.markdown("### WACC 计算过程（参考 Lecture 3 第13页）")
+    st.markdown("### WACC 计算过程")
     
     w = wacc_breakdown
     
     with st.expander("✏️ 手动覆盖 WACC 各项"):
         c1, c2 = st.columns(2)
         with c1:
-            r1 = st.number_input("1. Market equity ($US mn)", value=float(w['market_equity_mn']), step=1000.0, key=f"{key_prefix}_mkt_equity")
-            r2 = st.number_input("2. Debt ($US mn)", value=float(w['debt_mn']), step=100.0, key=f"{key_prefix}_debt")
-            r3 = st.number_input("3. Debt due within year ($US mn)", value=float(w['debt_current_portion_mn']), step=10.0, key=f"{key_prefix}_debt_cur")
-            r4 = st.number_input("4. Leases ($US mn)", value=float(w['leases_mn']), step=10.0, key=f"{key_prefix}_leases")
-            r5 = st.number_input("5. Leases due within year ($US mn)", value=float(w['leases_current_mn']), step=1.0, key=f"{key_prefix}_leases_cur")
+            ccy = (currency or "USD").upper()
+            r1 = st.number_input(f"1. Market equity（{ccy} mn）", value=float(w['market_equity_mn']), step=1000.0, key=f"{key_prefix}_mkt_equity")
+            r2 = st.number_input(f"2. Debt（{ccy} mn）", value=float(w['debt_mn']), step=100.0, key=f"{key_prefix}_debt")
+            r3 = st.number_input(f"3. Debt due within year（{ccy} mn）", value=float(w['debt_current_portion_mn']), step=10.0, key=f"{key_prefix}_debt_cur")
+            r4 = st.number_input(f"4. Leases（{ccy} mn）", value=float(w['leases_mn']), step=10.0, key=f"{key_prefix}_leases")
+            r5 = st.number_input(f"5. Leases due within year（{ccy} mn）", value=float(w['leases_current_mn']), step=1.0, key=f"{key_prefix}_leases_cur")
         with c2:
             beta = st.number_input("9. CAPM Beta", value=float(w['beta']), step=0.05, key=f"{key_prefix}_beta")
             mkt_prem = st.number_input("10. Market Premium (%)", value=float(w['market_premium_pct']), step=0.5, key=f"{key_prefix}_mkt_prem")
@@ -94,13 +97,14 @@ def render_wacc_table_lecture3_p13(wacc_breakdown: Dict, key_prefix: str = "wacc
     wacc_pct = we * re + wd * rd
     
     # 用 DataFrame 渲染为正常表格，避免 markdown 表格错位/截断
+    ccy = (currency or "USD").upper()
     wacc_rows = [
-        (1, "Market equity ($US mn)", "", f"{r1:,.0f}"),
-        (2, "Debt ($US mn)", "", f"{r2:,.0f}"),
-        (3, "Portion of LT debt due within a year ($US mn)", "", f"{r3:,.0f}"),
-        (4, "Leases ($US mn)", "", f"{r4:,.0f}"),
-        (5, "Leases due within a year ($US mn)", "", f"{r5:,.0f}"),
-        (6, "Total debt ($US mn)", "6=2+3+4+5", f"{r6:,.0f}"),
+        (1, f"Market equity（{ccy} mn）", "", f"{r1:,.0f}"),
+        (2, f"Debt（{ccy} mn）", "", f"{r2:,.0f}"),
+        (3, f"Portion of LT debt due within a year（{ccy} mn）", "", f"{r3:,.0f}"),
+        (4, f"Leases（{ccy} mn）", "", f"{r4:,.0f}"),
+        (5, f"Leases due within a year（{ccy} mn）", "", f"{r5:,.0f}"),
+        (6, f"Total debt（{ccy} mn）", "6=2+3+4+5", f"{r6:,.0f}"),
         (7, "Share of equity (we)", "7=1/(1+6)", f"{we:.2f}"),
         (8, "Share of debt (wd)", "8=6/(1+6)", f"{wd:.2f}"),
         (9, "CAPM β (5yr; monthly)", "", f"{beta:.2f}"),
@@ -236,9 +240,10 @@ def render_epv_final_table_lecture3_p35(
     r_star_pct: Optional[float] = None,
     epvc_operating: Optional[float] = None,
     epvc_equity: Optional[float] = None,
+    currency: str = "USD",
 ) -> None:
-    """完整 EPV 计算表（Lecture 3 第35页）：原值、调整额、调整后对比；r* 与 EPVc；有调整项高亮。"""
-    st.markdown("### EPV 完整计算过程（参考 Lecture 3 第35页）")
+    """完整 EPV 计算表：原值、调整额、调整后对比；r* 与 EPVc。"""
+    st.markdown("### EPV 完整计算过程")
     
     tax_rate = tax_pct / 100
     orig_nopat = op_income * (1 - tax_rate)
@@ -246,8 +251,18 @@ def render_epv_final_table_lecture3_p35(
     total_adj = adj_over_dep + total_growth + extraordinary
     orig_epv = orig_nopat / (wacc_pct / 100) if wacc_pct else 0
     
-    def _b(x: float) -> str:
-        return f"{x/1e9:.1f}" if x is not None and abs(x) < 1e15 else (f"{x:.1f}" if x is not None else "")
+    ccy = (currency or "USD").upper()
+    def _money_b(x: float) -> str:
+        if x is None:
+            return ""
+        return f"{x/1e9:.2f}"
+
+    def _pct_any(x: float) -> str:
+        if x is None:
+            return ""
+        if abs(x) <= 1:
+            return f"{x*100:.2f}%"
+        return f"{x:.2f}%"
     
     rows: List[tuple] = [
         ("1", "Revenue", "", revenue, 0, revenue, False),
@@ -279,14 +294,16 @@ def render_epv_final_table_lecture3_p35(
     if epvc_equity is not None and r_star_pct is not None:
         rows.append(("15b", "EPVc Equity", "12b+13-14", epvc_equity, 0, epvc_equity, False))
     
-    def _cell(val, is_pct: bool = False) -> str:
+    def _cell_money(val) -> str:
         if val is None:
             return ""
-        if is_pct:
-            return f"{val*100:.2f}" if 0 < abs(val) <= 1 else f"{val:.2f}"
-        if abs(val) >= 1e9 or (abs(val) < 0.01 and val != 0):
-            return _b(val) if val >= 0 else f"-{_b(-val)}"
-        return f"{val:.3f}" if 0 < abs(val) < 100 else f"{val:.1f}"
+        s = _money_b(val)
+        return s
+
+    def _cell_pct(val) -> str:
+        if val is None:
+            return ""
+        return _pct_any(val)
     
     line_list, concept_list, formula_list, orig_list, adj_amt_list, after_list, highlight_list = [], [], [], [], [], [], []
     for line, concept, formula, orig, adj_amt, after, highlight in rows:
@@ -294,29 +311,25 @@ def render_epv_final_table_lecture3_p35(
         concept_list.append(concept)
         formula_list.append(formula)
         is_pct = "(%" in concept or "margin" in concept.lower()
-        orig_list.append(_cell(orig, is_pct) if orig is not None else "")
-        adj_amt_list.append(_cell(adj_amt, False) if adj_amt is not None else "")
-        after_list.append(_cell(after, is_pct) if after is not None else "")
+        # Taxes/WACC/r* 等是百分比；其余一律按金额（十亿）展示，避免“表头写 $B 但显示原始美元数”的错位
+        if is_pct:
+            orig_list.append(_cell_pct(orig) if orig is not None else "")
+            adj_amt_list.append(_cell_pct(adj_amt) if adj_amt is not None else "")
+            after_list.append(_cell_pct(after) if after is not None else "")
+        else:
+            orig_list.append(_cell_money(orig) if orig is not None else "")
+            adj_amt_list.append(_cell_money(adj_amt) if adj_amt is not None else "")
+            after_list.append(_cell_money(after) if after is not None else "")
         highlight_list.append(highlight)
     
     df = pd.DataFrame({
         "Line": line_list,
         "Concept": concept_list,
         "公式": formula_list,
-        "原始/报表 ($B 或 %)": orig_list,
-        "调整额 Adjusted amount": adj_amt_list,
-        "调整后 ($B 或 %)": after_list,
+        f"原始/报表（十亿 {ccy} 或 %）": orig_list,
+        f"调整额（十亿 {ccy} 或 %）": adj_amt_list,
+        f"调整后（十亿 {ccy} 或 %）": after_list,
     })
     
-    # 用 HTML 表格实现高亮（Streamlit dataframe 不支持 Styler）
-    html = '<table class="dataframe" style="border-collapse: collapse; width: 100%;">'
-    html += "<thead><tr>" + "".join(f'<th style="border: 1px solid #ddd; padding: 6px; text-align: left;">{c}</th>' for c in df.columns) + "</tr></thead><tbody>"
-    for i in range(len(df)):
-        tr_style = "background-color: #fff3cd;" if highlight_list[i] else ""
-        html += f'<tr style="{tr_style}">'
-        for c in df.columns:
-            html += f'<td style="border: 1px solid #ddd; padding: 6px;">{df.iloc[i][c]}</td>'
-        html += "</tr>"
-    html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
     st.caption("高亮行：该项有调整额。")

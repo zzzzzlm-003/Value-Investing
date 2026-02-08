@@ -95,6 +95,11 @@ class FranchiseValueCalculator:
                 invested_capital = max(total_assets * 0.5, 1)
             average_roic = nopat / invested_capital if invested_capital > 0 else 0
         
+        roic_override = self.adjustments.get('roic_override')
+        if roic_override is not None and roic_override > 0:
+            average_roic = float(roic_override)
+            nopat = average_roic * invested_capital
+
         marginal_roic = self._calculate_marginal_roic() if use_marginal else None
         
         return {

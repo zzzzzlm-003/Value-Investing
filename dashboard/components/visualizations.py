@@ -11,10 +11,19 @@ from typing import Dict, List
 
 class ValuationVisualizer:
     """估值可视化类"""
+
+    @staticmethod
+    def _ccy(currency: str) -> str:
+        return (currency or "USD").upper()
     
     @staticmethod
-    def create_market_cap_history(dates: List, market_caps: List, 
-                                  current_date: str = "") -> go.Figure:
+    def create_market_cap_history(
+        dates: List,
+        market_caps: List,
+        current_date: str = "",
+        currency: str = "USD",
+    ) -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建市值历史走势图
         
@@ -39,7 +48,7 @@ class ValuationVisualizer:
             line=dict(color='#3498db', width=2),
             fill='tozeroy',
             fillcolor='rgba(52, 152, 219, 0.1)',
-            hovertemplate='日期: %{x}<br>市值: $%{y:.2f}B<extra></extra>'
+            hovertemplate=f'日期: %{{x}}<br>市值: {ccy} %{{y:.2f}}B<extra></extra>'
         ))
         
         title = f'市值历史走势 (截至 {current_date})' if current_date else '市值历史走势'
@@ -47,7 +56,7 @@ class ValuationVisualizer:
         fig.update_layout(
             title=title,
             xaxis_title='日期',
-            yaxis_title='市值 (十亿美元)',
+            yaxis_title=f'市值 (十亿 {ccy})',
             template='plotly_white',
             height=400,
             hovermode='x unified'
@@ -122,8 +131,15 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_av_epv_comparison(av: float, epv: float, market_cap: float,
-                                  company_name: str = "") -> go.Figure:
+    def create_av_epv_comparison(
+        av: float,
+        epv: float,
+        market_cap: float,
+        fv: float = None,
+        company_name: str = "",
+        currency: str = "USD",
+    ) -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建AV vs EPV vs 市值对比图
         
@@ -138,24 +154,32 @@ class ValuationVisualizer:
         """
         fig = go.Figure()
         
-        categories = ['Asset Value\n(AV)', 'Earning Power\nValue (EPV)', '当前市值']
+        categories = ['Asset Value\n(AV)', 'Earning Power\nValue (EPV)']
+        values_raw = [av, epv]
+        colors = ['#3498db', '#2ecc71']
+        if fv is not None:
+            categories.append('Franchise\nValue (FV)')
+            values_raw.append(fv)
+            colors.append('#9b59b6')
+        categories.append('当前市值')
+        values_raw.append(market_cap)
+        colors.append('#e74c3c')
         def _finite(x):
             return x is not None and x == x and abs(x) != float('inf')
-        values = [(v / 1e9) if _finite(v) else 0 for v in [av, epv, market_cap]]
-        colors = ['#3498db', '#2ecc71', '#e74c3c']
+        values = [(v / 1e9) if _finite(v) else 0 for v in values_raw]
         
         fig.add_trace(go.Bar(
             x=categories,
             y=values,
-            text=[f'${v:.1f}B' for v in values],
+            text=[f'{ccy} {v:.1f}B' for v in values],
             textposition='auto',
             marker_color=colors,
-            hovertemplate='<b>%{x}</b><br>估值: $%{y:.1f}B<extra></extra>'
+            hovertemplate=f'<b>%{{x}}</b><br>估值: {ccy} %{{y:.1f}}B<extra></extra>'
         ))
         
         fig.update_layout(
             title=f'{company_name} 估值对比' if company_name else '估值对比',
-            yaxis_title='估值 (十亿美元)',
+            yaxis_title=f'估值 (十亿 {ccy})',
             xaxis_title='',
             template='plotly_white',
             height=500,
@@ -166,7 +190,8 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_av_components_breakdown(components: Dict) -> go.Figure:
+    def create_av_components_breakdown(components: Dict, currency: str = "USD") -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建AV组成部分分解图
         
@@ -189,7 +214,7 @@ class ValuationVisualizer:
                 x=list(positive_items.keys()),
                 y=[v/1e9 for v in positive_items.values()],
                 marker_color='#3498db',
-                text=[f'${v/1e9:.1f}B' for v in positive_items.values()],
+                text=[f'{ccy} {v/1e9:.1f}B' for v in positive_items.values()],
                 textposition='auto',
             ))
         
@@ -200,13 +225,13 @@ class ValuationVisualizer:
                 x=list(negative_items.keys()),
                 y=[v/1e9 for v in negative_items.values()],
                 marker_color='#e74c3c',
-                text=[f'${v/1e9:.1f}B' for v in negative_items.values()],
+                text=[f'{ccy} {v/1e9:.1f}B' for v in negative_items.values()],
                 textposition='auto',
             ))
         
         fig.update_layout(
             title='Asset Value 组成分解',
-            yaxis_title='金额 (十亿美元)',
+            yaxis_title=f'金额 (十亿 {ccy})',
             xaxis_title='',
             barmode='relative',
             template='plotly_white',
@@ -217,7 +242,8 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_epv_components_waterfall(components: Dict, total_epv: float) -> go.Figure:
+    def create_epv_components_waterfall(components: Dict, total_epv: float, currency: str = "USD") -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建EPV调整项瀑布图
         
@@ -241,14 +267,14 @@ class ValuationVisualizer:
             measure=["relative"] * len(components) + ["total"],
             x=labels,
             textposition="outside",
-            text=[f"${v:.1f}B" if v != 0 else "" for v in values_b],
+            text=[f"{ccy} {v:.1f}B" if v != 0 else "" for v in values_b],
             y=values_b,
             connector={"line": {"color": "rgb(63, 63, 63)"}},
         ))
         
         fig.update_layout(
             title="Earning Power Value 计算过程",
-            yaxis_title="金额 (十亿美元)",
+            yaxis_title=f"金额 (十亿 {ccy})",
             template='plotly_white',
             height=500,
             showlegend=False,
@@ -367,7 +393,8 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_valuation_summary_table(av_summary: Dict, epv_summary: Dict) -> pd.DataFrame:
+    def create_valuation_summary_table(av_summary: Dict, epv_summary: Dict, currency: str = "USD") -> pd.DataFrame:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建估值摘要表格
         
@@ -395,18 +422,19 @@ class ValuationVisualizer:
                 'EPV-AV价差',
             ],
             '金额': [
-                f"${av/1e9:.1f}B" if _finite(av) else 'N/A',
-                f"${epv/1e9:.1f}B" if _finite(epv) else 'N/A',
-                f"${mcap/1e9:.1f}B" if _finite(mcap) else 'N/A',
+                f"{ccy} {av/1e9:.1f}B" if _finite(av) else 'N/A',
+                f"{ccy} {epv/1e9:.1f}B" if _finite(epv) else 'N/A',
+                f"{ccy} {mcap/1e9:.1f}B" if _finite(mcap) else 'N/A',
                 f"{arat:.1%}" if _finite(arat) else 'N/A',
                 f"{erat:.1%}" if _finite(erat) else 'N/A',
-                f"${(epv-av)/1e9:.1f}B" if _finite(epv - av) else 'N/A',
+                f"{ccy} {(epv-av)/1e9:.1f}B" if _finite(epv - av) else 'N/A',
             ]
         }
         return pd.DataFrame(data)
     
     @staticmethod
-    def create_pie_chart(components: Dict, title: str = "组成分析") -> go.Figure:
+    def create_pie_chart(components: Dict, title: str = "组成分析", currency: str = "USD") -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建饼图
         
@@ -425,7 +453,7 @@ class ValuationVisualizer:
             values=list(positive_items.values()),
             hole=.3,
             textinfo='label+percent',
-            hovertemplate='<b>%{label}</b><br>金额: $%{value/1e9:.1f}B<br>占比: %{percent}<extra></extra>'
+            hovertemplate=f'<b>%{{label}}</b><br>金额: {ccy} %{{value/1e9:.1f}}B<br>占比: %{{percent}}<extra></extra>'
         )])
         
         fig.update_layout(
@@ -438,7 +466,8 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_franchise_value_waterfall(fv_analysis: Dict) -> go.Figure:
+    def create_franchise_value_waterfall(fv_analysis: Dict, currency: str = "USD") -> go.Figure:
+        ccy = ValuationVisualizer._ccy(currency)
         """
         创建Franchise Value瀑布图
         
@@ -461,7 +490,7 @@ class ValuationVisualizer:
             measure = ["absolute", "relative", "total", "absolute"],
             x = ["盈利能力价值<br>(EPV)", "特许权价值<br>(FV)", "内在价值", "当前市值"],
             textposition = "outside",
-            text = [f"${epv:.1f}B", f"${fv:.1f}B", f"${total:.1f}B", f"${market_cap:.1f}B"],
+            text = [f"{ccy} {epv:.1f}B", f"{ccy} {fv:.1f}B", f"{ccy} {total:.1f}B", f"{ccy} {market_cap:.1f}B"],
             y = [epv, fv, total, market_cap],
             connector = {"line":{"color":"rgb(63, 63, 63)"}},
         ))
@@ -471,7 +500,7 @@ class ValuationVisualizer:
             showlegend = False,
             template='plotly_white',
             height=500,
-            yaxis_title="价值 (十亿美元)",
+            yaxis_title=f"价值 (十亿 {ccy})",
             font=dict(size=12)
         )
         
@@ -690,8 +719,8 @@ class ValuationVisualizer:
         return fig
     
     @staticmethod
-    def create_value_bridge(av: float, epv: float, fv: float, 
-                           market_cap: float) -> go.Figure:
+    def create_value_bridge(av: float, epv: float, fv: float,
+                            market_cap: float, currency: str = "USD") -> go.Figure:
         """
         创建价值桥接图
         
@@ -712,6 +741,7 @@ class ValuationVisualizer:
         fv_b = fv / 1e9
         mc_b = market_cap / 1e9
         total_b = epv_b + fv_b
+        ccy = ValuationVisualizer._ccy(currency)
         
         # 计算差额
         epv_premium = epv_b - av_b
@@ -724,18 +754,21 @@ class ValuationVisualizer:
             x = ["资产价值<br>(AV)", "EPV溢价", "盈利能力<br>(EPV)", 
                  "特许权<br>(FV)", "内在价值", "当前市值"],
             textposition = "outside",
-            text = [f"${av_b:.1f}B", f"+${epv_premium:.1f}B", f"${epv_b:.1f}B",
-                   f"+${fv_b:.1f}B", f"${total_b:.1f}B", f"${mc_b:.1f}B"],
+            text = [f"{ccy} {av_b:.1f}B", f"+{ccy} {epv_premium:.1f}B", f"{ccy} {epv_b:.1f}B",
+                   f"+{ccy} {fv_b:.1f}B", f"{ccy} {total_b:.1f}B", f"{ccy} {mc_b:.1f}B"],
             y = [av_b, epv_premium, epv_b, fv_b, total_b, mc_b],
             connector = {"line":{"color":"rgb(63, 63, 63)"}},
         ))
         
         # 添加注释说明市场溢价/折价
+        denom = total_b if abs(total_b) > 1e-9 else None
         if market_premium > 0:
-            annotation_text = f"市场溢价: ${market_premium:.1f}B (+{market_premium/total_b:.1%})"
+            pct = f"+{(market_premium/denom):.1%}" if denom else "N/A"
+            annotation_text = f"市场溢价: {ccy} {market_premium:.1f}B ({pct})"
             annotation_color = "green"
         else:
-            annotation_text = f"市场折价: ${abs(market_premium):.1f}B ({market_premium/total_b:.1%})"
+            pct = f"{(market_premium/denom):.1%}" if denom else "N/A"
+            annotation_text = f"市场折价: {ccy} {abs(market_premium):.1f}B ({pct})"
             annotation_color = "red"
         
         fig.add_annotation(
@@ -755,7 +788,7 @@ class ValuationVisualizer:
             showlegend = False,
             template='plotly_white',
             height=500,
-            yaxis_title="价值 (十亿美元)",
+            yaxis_title=f"价值 (十亿 {ccy})",
             font=dict(size=12)
         )
         

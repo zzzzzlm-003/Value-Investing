@@ -3,7 +3,7 @@
 """
 import pandas as pd
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 import io
 
 
@@ -12,7 +12,9 @@ class ReportExporter:
     
     @staticmethod
     def export_to_excel(company_info: Dict, av_results: Dict, epv_results: Dict,
-                       av_summary: Dict, epv_summary: Dict) -> bytes:
+                       av_summary: Dict, epv_summary: Dict,
+                       fv_analysis: Optional[Dict] = None,
+                       extra_tables: Optional[Dict[str, pd.DataFrame]] = None) -> bytes:
         """
         导出详细Excel报告
         
@@ -75,6 +77,7 @@ class ReportExporter:
             summary_df = pd.DataFrame([
                 ['Asset Value (AV)', av_summary.get('total_av', 0) / 1e9, '-'],
                 ['Earning Power Value (EPV)', epv_summary.get('epv', 0) / 1e9, '-'],
+                ['Franchise Value (FV)', (fv_analysis or {}).get('franchise_value', 0) / 1e9, '-'],
                 ['当前市值', av_summary.get('market_cap', 0) / 1e9, '-'],
                 ['AV/市值', av_summary.get('av_to_market_cap', 0), '%'],
                 ['EPV/市值', epv_summary.get('epv_to_market_cap', 0), '%'],
@@ -87,6 +90,8 @@ class ReportExporter:
                 ppe_details = av_results['ppe_details']
                 ppe_rows = []
                 for component, details in ppe_details.items():
+                    if not isinstance(details, dict):
+                        continue
                     ppe_rows.append([
                         component,
                         details.get('original', 0) / 1e9,
@@ -98,6 +103,27 @@ class ReportExporter:
                 ppe_df = pd.DataFrame(ppe_rows, 
                                      columns=['资产类型', '原值(十亿)', '调整系数', '调整后(十亿)', '调整额(十亿)'])
                 ppe_df.to_excel(writer, sheet_name='PPE调整明细', index=False)
+
+            # 6. FV 结果（如果有）
+            if fv_analysis:
+                fv_df = pd.DataFrame([
+                    ['EPV', fv_analysis.get('epv', 0) / 1e9],
+                    ['Franchise Value', fv_analysis.get('franchise_value', 0) / 1e9],
+                    ['Total Value', fv_analysis.get('total_value', 0) / 1e9],
+                    ['ROIC', fv_analysis.get('roic', 0)],
+                    ['WACC', fv_analysis.get('wacc', 0)],
+                    ['Growth rate', fv_analysis.get('growth_rate', 0)],
+                    ['Margin of Safety', fv_analysis.get('margin_of_safety', 0)],
+                ], columns=['项目', '值'])
+                fv_df.to_excel(writer, sheet_name='Franchise Value', index=False)
+
+            # 7. 额外明细表（原始值/调整值/过程）
+            if extra_tables:
+                for name, df in extra_tables.items():
+                    try:
+                        df.to_excel(writer, sheet_name=name[:31], index=False)
+                    except Exception:
+                        pass
         
         output.seek(0)
         return output.getvalue()
@@ -167,6 +193,42 @@ EPV/AV:   {epv/av if av > 0 else 0:.2f}x
 """
         
         return summary
+
+    @staticmethod
+    def export_to_pdf(company_info: Dict, av_summary: Dict, epv_summary: Dict, fv_analysis: Optional[Dict] = None) -> bytes:
+        """
+        导出简易 PDF 报告（全文本）
+        依赖 reportlab（requirements 已包含）
+        """
+        from reportlab.pdfgen import canvas
+
+        output = io.BytesIO()
+        c = canvas.Canvas(output)
+        y = 800
+        line_h = 16
+        def _line(text):
+            nonlocal y
+            c.drawString(40, y, text)
+            y -= line_h
+        _line("Value Investing Report")
+        _line(f"Company: {company_info.get('name', 'N/A')}")
+        _line(f"Industry: {company_info.get('industry', 'N/A')}")
+        _line(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+        y -= line_h
+        _line(f"AV: ${av_summary.get('total_av', 0)/1e9:.2f}B")
+        _line(f"EPV: ${epv_summary.get('epv', 0)/1e9:.2f}B")
+        if fv_analysis:
+            _line(f"FV: ${fv_analysis.get('franchise_value', 0)/1e9:.2f}B")
+        _line(f"Market Cap: ${av_summary.get('market_cap', 0)/1e9:.2f}B")
+        y -= line_h
+        _line(f"AV/Market: {av_summary.get('av_to_market_cap', 0):.1%}")
+        _line(f"EPV/Market: {epv_summary.get('epv_to_market_cap', 0):.1%}")
+        if fv_analysis:
+            _line(f"Margin of Safety: {fv_analysis.get('margin_of_safety', 0):.1%}")
+        c.showPage()
+        c.save()
+        output.seek(0)
+        return output.getvalue()
     
     @staticmethod
     def get_filename(ticker: str, file_type: str = 'excel') -> str:

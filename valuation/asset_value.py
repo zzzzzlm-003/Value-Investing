@@ -6,6 +6,86 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from .adjustments import AdjustmentCalculator
 
+# 行业“数据常识”库：用于 PPE 结构预估（比例为 Total Assets 的占比）
+INDUSTRY_HEURISTICS = {
+    "airlines": {
+        "keywords": ["airline", "airlines", "air transport", "航空", "航司"],
+        "ppe_ratio_of_assets": 0.65,
+        "components": {"equipment": 0.80, "building": 0.10, "land": 0.05, "fixtures": 0.03, "cip": 0.02},
+    },
+    "retail": {
+        "keywords": ["retail", "零售", "超市", "百货"],
+        "ppe_ratio_of_assets": 0.40,
+        "components": {"building": 0.45, "land": 0.25, "fixtures": 0.20, "equipment": 0.05, "cip": 0.05},
+    },
+    "railroad": {
+        "keywords": ["railroad", "rail", "铁路"],
+        "ppe_ratio_of_assets": 0.60,
+        "components": {"equipment": 0.70, "building": 0.10, "land": 0.10, "fixtures": 0.05, "cip": 0.05},
+    },
+    "utilities": {
+        "keywords": ["utilities", "utility", "公用事业", "电力", "天然气"],
+        "ppe_ratio_of_assets": 0.55,
+        "components": {"equipment": 0.60, "building": 0.15, "land": 0.05, "fixtures": 0.10, "cip": 0.10},
+    },
+    "telecom": {
+        "keywords": ["telecom", "telecommunications", "通信", "运营商"],
+        "ppe_ratio_of_assets": 0.45,
+        "components": {"equipment": 0.70, "building": 0.10, "land": 0.05, "fixtures": 0.05, "cip": 0.10},
+    },
+    "oil_gas": {
+        "keywords": ["oil", "gas", "能源", "石油", "天然气", "钻探"],
+        "ppe_ratio_of_assets": 0.55,
+        "components": {"equipment": 0.75, "building": 0.05, "land": 0.05, "fixtures": 0.05, "cip": 0.10},
+    },
+    "hotels": {
+        "keywords": ["hotel", "hospitality", "酒店", "住宿"],
+        "ppe_ratio_of_assets": 0.50,
+        "components": {"building": 0.60, "land": 0.20, "fixtures": 0.10, "equipment": 0.05, "cip": 0.05},
+    },
+    "real_estate": {
+        "keywords": ["real estate", "地产", "房地产"],
+        "ppe_ratio_of_assets": 0.70,
+        "components": {"building": 0.50, "land": 0.40, "fixtures": 0.05, "equipment": 0.03, "cip": 0.02},
+    },
+    "manufacturing": {
+        "keywords": ["manufacturing", "工业", "制造"],
+        "ppe_ratio_of_assets": 0.35,
+        "components": {"equipment": 0.55, "building": 0.20, "land": 0.10, "fixtures": 0.10, "cip": 0.05},
+    },
+    "semiconductors": {
+        "keywords": ["semiconductor", "芯片", "半导体"],
+        "ppe_ratio_of_assets": 0.30,
+        "components": {"equipment": 0.70, "building": 0.15, "land": 0.05, "fixtures": 0.05, "cip": 0.05},
+    },
+    "software": {
+        "keywords": ["software", "互联网", "saas", "云", "软件"],
+        "ppe_ratio_of_assets": 0.10,
+        "components": {"equipment": 0.60, "building": 0.20, "land": 0.05, "fixtures": 0.10, "cip": 0.05},
+    },
+    "banking": {
+        "keywords": ["bank", "banking", "银行", "金融"],
+        "ppe_ratio_of_assets": 0.08,
+        "components": {"equipment": 0.50, "building": 0.30, "land": 0.10, "fixtures": 0.05, "cip": 0.05},
+    },
+}
+
+
+def get_industry_heuristic(sector: str, industry: str) -> Optional[Dict]:
+    """
+    根据行业/板块匹配 PPE 估算参数。
+    Returns: {ppe_ratio_of_assets, components, label} or None
+    """
+    text = f"{sector} {industry}".lower()
+    for label, cfg in INDUSTRY_HEURISTICS.items():
+        if any(k in text for k in cfg.get("keywords", [])):
+            return {
+                "label": label,
+                "ppe_ratio_of_assets": cfg["ppe_ratio_of_assets"],
+                "components": cfg["components"],
+            }
+    return None
+
 
 class AssetValueCalculator:
     """资产价值计算类"""
@@ -156,6 +236,7 @@ class AssetValueCalculator:
         bs = self.data.get('balance_sheet', {})
         ppe_net = float(bs.get('ppe_net', 0) or 0)
         ppe_gross = float(bs.get('ppe_gross', 0) or 0)
+        total_assets = float(bs.get('total_assets', 0) or 0)
         if ppe_net <= 0:
             return 0, {'reason': '无PPE净值数据'}
         if not ppe_gross or ppe_gross <= 0:
@@ -163,20 +244,35 @@ class AssetValueCalculator:
         ratios = self.ppe_ratios
         if 'ppe_components' in adjustments:
             ppe_components = adjustments['ppe_components']
+            details = {'source': 'manual_components'}
         else:
-            ppe_components = {
-                'land': ppe_gross * ratios.get('land', 0.08),
-                'building': ppe_gross * ratios.get('building', 0.51),
-                'fixtures': ppe_gross * ratios.get('fixtures', 0.33),
-                'equipment': ppe_gross * ratios.get('equipment', 0.08),
-                'cip': ppe_gross * ratios.get('cip', 0.06),
-            }
+            details = {}
+            # 行业基准估算：使用 Total Assets 的比例预估 PPE 结构
+            comp_info = self.data.get('company_info', {})
+            heuristic = get_industry_heuristic(comp_info.get('sector', ''), comp_info.get('industry', ''))
+            if heuristic and total_assets > 0:
+                heuristic_gross = total_assets * heuristic['ppe_ratio_of_assets']
+                ppe_components = {
+                    k: heuristic_gross * v for k, v in heuristic['components'].items()
+                }
+                details['heuristic'] = True
+                details['heuristic_label'] = heuristic.get('label')
+                details['heuristic_gross'] = heuristic_gross
+            else:
+                ppe_components = {
+                    'land': ppe_gross * ratios.get('land', 0.08),
+                    'building': ppe_gross * ratios.get('building', 0.51),
+                    'fixtures': ppe_gross * ratios.get('fixtures', 0.33),
+                    'equipment': ppe_gross * ratios.get('equipment', 0.08),
+                    'cip': ppe_gross * ratios.get('cip', 0.06),
+                }
         market = self.data.get('company_info', {}).get('country', 'US')
         market_code = 'us' if (market == 'United States' or market == 'US') else 'china'
         factors = self.ppe_params.get(market_code, self.ppe_params['us'])
-        total_adj, details = self.adjuster.calculate_ppe_adjustment(
+        total_adj, calc_details = self.adjuster.calculate_ppe_adjustment(
             ppe_components, factors, reported_ppe_net=ppe_net
         )
+        details.update(calc_details)
         # 防护：调整额不应严重为负（课件 WMT 约 +46B），-30B 以下视为数据错误，按 0 处理
         if total_adj < -30e9:
             details['capped'] = True

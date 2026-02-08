@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+import urllib.parse
+import urllib.request
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -28,19 +30,38 @@ class DataFetcher:
         self._fetch_stock_object()
     
     def _format_ticker(self, ticker: str, market: str) -> str:
-        """格式化股票代码"""
+        """格式化股票代码
+
+        - US: 原样（无后缀）
+        - HK: 自动补 .HK
+        - CN: 自动判断 .SS / .SZ / .BJ（当输入为 6 位数字时）
+        """
         market_suffixes = {
             'US': '',
             'HK': '.HK',
-            'CN': '.SS',
+            # CN 需按代码判断（上交所/深交所/北交所），默认不强行补后缀
+            'CN': '',
             'SZ': '.SZ'
         }
         
         # 如果已经有后缀，直接返回
         if '.' in ticker:
             return ticker
+
+        t = (ticker or '').strip()
+        # A 股常见：6 位数字。按首位规则粗略判断交易所后缀
+        if market == 'CN' and t.isdigit() and len(t) == 6:
+            if t.startswith(('6', '9')):
+                return t + '.SS'
+            if t.startswith(('0', '2', '3')):
+                return t + '.SZ'
+            # 北交所常见：8/4 开头（如 83xxxx / 43xxxx）
+            if t.startswith(('8', '4')):
+                return t + '.BJ'
+            # 兜底：仍按 CN 默认（不补后缀）
+            return t
         
-        return ticker + market_suffixes.get(market, '')
+        return t + market_suffixes.get(market, '')
     
     def _resolve_company_name_to_ticker(self, query: str, market: str) -> Optional[str]:
         """
@@ -50,8 +71,25 @@ class DataFetcher:
         if not query or not query.strip():
             return None
         q = query.strip()
-        # 尝试多种查询以提高匹配率：原样、首字母大写、常见后缀
-        search_queries = [q, q.title(), q + " Inc", q + " Corp"]
+        # 尝试多种查询以提高匹配率：
+        # - 英文名：原样 / Title / 加 Inc/Corp
+        # - 中文名：只用原样（避免噪声）
+        # - 首字母/简称：同时尝试大小写
+        def _contains_cjk(s: str) -> bool:
+            return any('\u4e00' <= ch <= '\u9fff' for ch in (s or ''))
+
+        # A 股中文名/简称：优先走国内行情 suggest（yfinance.Search 对中文经常命中不稳）
+        if market == 'CN':
+            resolved_cn = self._resolve_cn_name_to_ticker(q)
+            if resolved_cn:
+                return resolved_cn
+
+        if _contains_cjk(q):
+            search_queries = [q]
+        elif q.isalpha() and 2 <= len(q) <= 8:
+            search_queries = [q, q.upper(), q.lower(), q.title()]
+        else:
+            search_queries = [q, q.title(), q + " Inc", q + " Corp"]
         for search_query in search_queries:
             try:
                 search = yf.Search(search_query, max_results=15)
@@ -65,17 +103,63 @@ class DataFetcher:
                 continue
         return None
 
+    def _resolve_cn_name_to_ticker(self, query: str) -> Optional[str]:
+        """
+        A股/北交所：用腾讯 smartbox 将中文名/拼音/首字母解析为代码。
+
+        返回格式：600519.SS / 000001.SZ / 830799.BJ
+        """
+        if not query or not query.strip():
+            return None
+        q = query.strip()
+        try:
+            # 返回示例：
+            # v_hint="sz~002130~沃尔核材~wehc~GP-A^sh~600323~瀚蓝环境~hlhj~GP-A"
+            url = "https://smartbox.gtimg.cn/s3/?q=" + urllib.parse.quote(q) + "&t=all"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                text = resp.read().decode("utf-8", errors="ignore")
+            if not text or "v_hint" not in text:
+                return None
+            # 取引号内主体
+            i1 = text.find("\"")
+            i2 = text.rfind("\"")
+            body = text[i1 + 1 : i2] if (i1 != -1 and i2 != -1 and i2 > i1) else text
+            if not body:
+                return None
+            for item in body.split("^"):
+                parts = item.split("~")
+                if len(parts) < 2:
+                    continue
+                mkt = parts[0].strip().lower()
+                code = parts[1].strip()
+                if not code or not code.isdigit() or len(code) != 6:
+                    continue
+                if mkt == "sh":
+                    return code + ".SS"
+                if mkt == "sz":
+                    return code + ".SZ"
+                if mkt == "bj":
+                    return code + ".BJ"
+            return None
+        except Exception:
+            return None
+
     def _pick_best_equity_ticker(self, quotes, market: str) -> Optional[str]:
         """从 Search 返回的 quotes 中选出最合适的美股/指定市场股票代码。"""
         if not quotes:
             return None
-        suffix = {'US': '', 'HK': '.HK', 'CN': '.SS', 'SZ': '.SZ'}.get(market, '')
+        # CN: 同时接受 .SS/.SZ/.BJ；HK: .HK；US: 无后缀
+        suffix = {'US': '', 'HK': '.HK', 'CN': '', 'SZ': '.SZ'}.get(market, '')
+        cn_suffixes = ('.SS', '.SZ', '.BJ')
         for q in quotes:
             sym = (q.get('symbol') if isinstance(q, dict) else getattr(q, 'symbol', None)) or ''
             qtype = (q.get('quoteType') if isinstance(q, dict) else getattr(q, 'quoteType', '')) or ''
             if qtype != 'EQUITY':
                 continue
             if market == 'US' and '.' not in sym:
+                return sym
+            if market == 'CN' and any(sym.endswith(s) for s in cn_suffixes):
                 return sym
             if suffix and sym.endswith(suffix):
                 return sym
@@ -234,10 +318,28 @@ class DataFetcher:
         market_cap = (company_info.get('market_cap') or 0) if company_info else 0
         resolved_ticker = None
         
-        # Yahoo 只认股票代码：无数据时或输入像公司名（如 starbuck、NVIDIA）时尝试解析为代码
-        looks_like_name = (self.ticker and '.' not in self.ticker and
-                           (len(self.ticker) > 5 or self.ticker != self.ticker.upper()))
-        if (not company_info or not market_cap or looks_like_name) and self.ticker and '.' not in self.ticker:
+        # Yahoo 只认股票代码：无数据时或输入像公司名/中文/首字母时尝试解析为代码
+        def _contains_cjk(s: str) -> bool:
+            return any('\u4e00' <= ch <= '\u9fff' for ch in (s or ''))
+
+        t = (self.ticker or '').strip()
+        looks_like_name = (
+            t and '.' not in t and (
+                _contains_cjk(t) or
+                (not t.isalnum()) or
+                (len(t) > 5) or
+                (t != t.upper())
+            )
+        )
+        # 当输入为“首字母/简称”（通常 2-8 位字母）但直接拉不到数据时，也尝试解析
+        looks_like_initials = t.isalpha() and 2 <= len(t) <= 8 and '.' not in t
+        no_financials = False
+        try:
+            no_financials = (self.get_balance_sheet().empty and self.get_income_statement().empty)
+        except Exception:
+            no_financials = False
+
+        if (not company_info or not market_cap or no_financials or looks_like_name) and t and '.' not in t:
             original_input = self.ticker
             resolved = self._resolve_company_name_to_ticker(original_input, self.market)
             if resolved and resolved.upper() != original_input.upper():
@@ -249,6 +351,19 @@ class DataFetcher:
                 if company_info and market_cap:
                     resolved_ticker = resolved
                     print(f"已根据公司名解析为股票代码: {original_input} → {resolved}")
+        # 二次兜底：首字母/简称但第一次没触发 looks_like_name 的情况（例如全大写且较短）
+        if (not resolved_ticker) and (looks_like_initials and (not company_info or not market_cap or no_financials)):
+            original_input = self.ticker
+            resolved = self._resolve_company_name_to_ticker(original_input, self.market)
+            if resolved and resolved.upper() != original_input.upper():
+                self.ticker = resolved
+                self.full_ticker = self._format_ticker(resolved, self.market)
+                self._fetch_stock_object()
+                company_info = self.get_company_info()
+                market_cap = (company_info.get('market_cap') or 0) if company_info else 0
+                if company_info and market_cap:
+                    resolved_ticker = resolved
+                    print(f"已根据简称/首字母解析为股票代码: {original_input} → {resolved}")
         
         result = {
             'company_info': company_info or {},
