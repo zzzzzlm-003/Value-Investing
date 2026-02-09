@@ -548,7 +548,14 @@ if analyze_button or st.session_state.analyzed:
     # 3. 公司信息展示（增强版）
     company_info = financial_data['company_info']
     market_data = financial_data['market_data']
-    currency = (company_info.get('currency') or MARKETS.get(market, {}).get('currency') or "USD").upper()
+    trading_currency = (company_info.get('currency') or MARKETS.get(market, {}).get('currency') or "USD").upper()
+    financial_currency = (company_info.get('financial_currency') or trading_currency).upper()
+    currency = financial_currency  # 统一估值/财报展示币种以财报币种为准
+    if trading_currency != financial_currency:
+        st.warning(
+            f"⚠️ 币种口径提示：该标的交易币种为 {trading_currency}，财报币种为 {financial_currency}。"
+            "本工具将以财报币种展示 AV/EPV/FV；市值等市场数据若与财报币种不同，需汇率换算后再严格比较。"
+        )
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1176,8 +1183,9 @@ V = NOPAT/r + (R-r)/r × Growth Investment
     
     fv_calculator = FranchiseValueCalculator(processed_data, fv_adjustments)
     
-    # 计算ROIC（展示用课件口径；FV 内部用 net 口径）
-    roic_analysis = fv_calculator.calculate_roic(use_marginal=True, method='lecture')
+    # 计算ROIC（展示默认用 net 口径，更符合市场常用“投入资本”定义；lecture 口径保留作对照）
+    roic_analysis = fv_calculator.calculate_roic(use_marginal=True, method='net')
+    roic_analysis_lecture = fv_calculator.calculate_roic(use_marginal=False, method='lecture')
     
     # 计算增长率（内部 FV 会用 net ROIC 并应用 g 上限）
     growth_analysis = fv_calculator.calculate_growth_rate()
@@ -1494,6 +1502,12 @@ $$\text{Growth Capex} = \text{Total Capex} - \text{Maintenance Capex}$$
             st.metric("NOPAT", f"{currency} {roic_analysis['nopat']/1e9:.2f}B")
         fig_roic_wacc = viz.create_roic_vs_wacc_scatter(roic_analysis['average_roic'], fv_analysis['wacc'], company_info.get('name', ticker_for_analysis))
         st.plotly_chart(fig_roic_wacc, use_container_width=True)
+        with st.expander("📎 ROIC 口径对照（net vs lecture）", expanded=False):
+            st.caption("net 口径更接近市场常用 ROIC 定义；lecture 口径用于课件对照，遇到 contra-sign/缺失项时可能偏离较大。")
+            st.dataframe(pd.DataFrame([
+                {"口径": "net（默认）", "ROIC": _pct(roic_analysis.get('average_roic')), "投入资本($B)": f"{roic_analysis.get('invested_capital',0)/1e9:.2f}", "NOPAT($B)": f"{roic_analysis.get('nopat',0)/1e9:.2f}"},
+                {"口径": "lecture（对照）", "ROIC": _pct(roic_analysis_lecture.get('average_roic')), "投入资本($B)": f"{roic_analysis_lecture.get('invested_capital',0)/1e9:.2f}", "NOPAT($B)": f"{roic_analysis_lecture.get('nopat',0)/1e9:.2f}"},
+            ]), use_container_width=True, hide_index=True)
 
         # ── ROIC 完整计算过程（折叠）──
         with st.expander('🔍 ROIC 完整计算过程', expanded=False):

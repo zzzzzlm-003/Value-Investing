@@ -191,7 +191,10 @@ class DataFetcher:
                 'sector': info.get('sector', 'N/A'),
                 'industry': info.get('industry', 'N/A'),
                 'country': info.get('country', 'N/A'),
+                # currency: 交易币种（如 ADR 可能为 USD）
                 'currency': info.get('currency', 'USD'),
+                # financial_currency: 财报币种（如 TSM 的财报可能为 TWD）
+                'financial_currency': info.get('financialCurrency') or info.get('financial_currency') or info.get('currency', 'USD'),
                 'market_cap': info.get('marketCap', 0),
                 'beta': info.get('beta', 1.0),
                 'employees': info.get('fullTimeEmployees', 0),

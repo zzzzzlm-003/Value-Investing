@@ -51,9 +51,9 @@ class FranchiseValueCalculator:
         operating_income = self._get_single_value(income.get('operating_income', 0))
         tax_rate = self.adjustments.get('tax_rate', 0.21)
         total_assets = self._get_single_value(bs.get('total_assets', 0))
-        ap = self._get_single_value(bs.get('accounts_payable', 0))
-        accrued = self._get_single_value(bs.get('accrued_liabilities', 0))
-        acc_dep = self._get_single_value(bs.get('accumulated_depreciation', 0))
+        ap = abs(self._get_single_value(bs.get('accounts_payable', 0)))
+        accrued = abs(self._get_single_value(bs.get('accrued_liabilities', 0)))
+        acc_dep = abs(self._get_single_value(bs.get('accumulated_depreciation', 0)))
         if not acc_dep and total_assets:
             ppe_net = self._get_single_value(bs.get('ppe_net', 0))
             acc_dep = ppe_net * 0.75 if ppe_net else 0  # 估算

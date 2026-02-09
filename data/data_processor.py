@@ -70,6 +70,9 @@ class DataProcessor:
         # yfinance 常把 Gross 填在 Net PPE 行，导致调整额 -78B。必须校验：净值不能 >= 原值。
         ppe_gross_val = self.get_value(bs, 'Gross PPE', year_idx) or self.get_value(bs, 'Properties', year_idx)
         acc_dep = self.get_value(bs, 'Accumulated Depreciation', year_idx) or 0
+        # 累计折旧在很多报表/数据源中以负数（contra-asset）呈现；统一转为正数幅度
+        if acc_dep and acc_dep < 0:
+            acc_dep = abs(acc_dep)
         ppe_net_val = self.get_value(bs, 'Net PPE', year_idx)
         # 无 Net PPE 或 API 误把 Gross 当 Net（净>=原）时，用 Gross - 累计折旧；无累计折旧时用经验比例
         if ppe_gross_val is not None and ppe_gross_val > 0:
@@ -113,9 +116,12 @@ class DataProcessor:
             # 负债
             'total_liabilities': self.get_value(bs, 'Total Liabilities', year_idx),
             'current_liabilities': self.get_value(bs, 'Current Liabilities', year_idx),
-            'accounts_payable': self.get_value(bs, 'Accounts Payable', year_idx),
-            'accrued_liabilities': self.get_value(bs, 'Accrued Liabilities', year_idx) or
-                                  self.get_value(bs, 'Other Current Liabilities', year_idx),
+            # 部分数据源可能以负号表示负债（contra-sign），这里统一取正数幅度，避免 ROIC 分母被错误缩小
+            'accounts_payable': abs(self.get_value(bs, 'Accounts Payable', year_idx) or 0),
+            'accrued_liabilities': abs(
+                self.get_value(bs, 'Accrued Liabilities', year_idx) or
+                self.get_value(bs, 'Other Current Liabilities', year_idx) or 0
+            ),
             'long_term_debt': self.get_value(bs, 'Long Term Debt', year_idx),
             'short_term_debt': self.get_value(bs, 'Current Debt', year_idx),
             
