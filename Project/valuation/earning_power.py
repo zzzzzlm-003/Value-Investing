@@ -317,8 +317,9 @@ class EarningPowerCalculator:
         if method == 'ttm':
             return float(relevant[0]) if relevant else 0
         if method == 'weighted':
-            # 权重 [1, 2, ..., n]，越近年份权重越大
-            weights = np.array(list(range(1, n + 1)), dtype=float)
+            # relevant 默认顺序为 [最新, 次新, ...]，故需反向权重保证“越近年份权重越大”
+            # 例如 n=3: [3,2,1]
+            weights = np.array(list(range(n, 0, -1)), dtype=float)
             return float(np.average(relevant, weights=weights))
         return float(np.mean(relevant))
     
@@ -332,7 +333,11 @@ class EarningPowerCalculator:
         Returns:
             float: 调整金额（正数=加回，负数=扣除）
         """
-        # 用户可以手动输入非经常性项目
+        # 优先：直接覆盖值（与前端 data_editor 输出键保持一致）
+        if 'extraordinary_adjustment' in adjustments and adjustments['extraordinary_adjustment'] is not None:
+            return float(adjustments['extraordinary_adjustment'])
+
+        # 其次：明细项求和
         extraordinary_items = adjustments.get('extraordinary_items', [])
         
         total_adjustment = sum(item.get('amount', 0) for item in extraordinary_items)
@@ -427,6 +432,18 @@ class EarningPowerCalculator:
         current_rd = rd_expenses[0] if (isinstance(rd_expenses, (list, tuple)) and rd_expenses) else (rd_expenses if isinstance(rd_expenses, (int, float)) else 0)
         current_rd = float(current_rd or 0)
         
+        # 课件两种口径：
+        # method1: 品牌价值摊销法，Growth = max(0, Marketing - Brand/15)
+        # method2: 营收占比法，Growth = Revenue * 0.35%
+        # 默认保留行业启发式（heuristic）
+        method = (adjustments.get('growth_expense_method') or 'heuristic').lower()
+        if method == 'method1':
+            brand_value = float(adjustments.get('brand_value', 0) or 0)
+            maintenance_brand = brand_value / 15 if brand_value > 0 else 0
+            return max(0.0, marketing_expense - maintenance_brand)
+        if method == 'method2':
+            return max(0.0, revenue * 0.0035)
+
         total_growth_expense = (current_rd * rd_pct) + (marketing_expense * mkt_pct)
         return total_growth_expense
     

@@ -59,7 +59,7 @@ CONFIG_KEYS = [
     # EPV
     'epv_p_catastrophic', 'epv_lambda',
     # FV
-    'roic_lease_interest', 'gdp_lt', 'g_cap_ov',
+    'roic_lease_interest', 'strict_course_mode', 'gdp_lt', 'g_cap_ov',
     'super_years', 'super_g', 'term_g',
     # AI 配置
     'ai_provider', 'ai_model', 'openai_api_key', 'anthropic_api_key',
@@ -375,9 +375,23 @@ if analyze_button or st.session_state.analyzed:
         processed_data = processor.get_latest_year_data()
     viz = ValuationVisualizer()
     
-    # 添加历史数据
+    # 添加历史数据，并将所选报表年份对齐到索引 0（避免计算器默认取 [0] 时与 UI 年份不一致）
     processed_data['income_statement'] = processor.extract_income_statement_items(7)
     processed_data['cash_flow'] = processor.extract_cash_flow_items(5)
+
+    def _rotate_to_front(arr, idx):
+        if not isinstance(arr, list) or not arr:
+            return arr
+        if idx <= 0 or idx >= len(arr):
+            return arr
+        return arr[idx:] + arr[:idx]
+
+    for _k in ('revenue', 'cogs', 'operating_income', 'ebit', 'net_income', 'depreciation', 'rd_expense', 'sg_and_a'):
+        if _k in processed_data.get('income_statement', {}):
+            processed_data['income_statement'][_k] = _rotate_to_front(processed_data['income_statement'][_k], data_year_index)
+    for _k in ('operating_cash_flow', 'capex', 'free_cash_flow', 'depreciation_cf', 'dividends_paid', 'stock_repurchase', 'common_stock_issuance'):
+        if _k in processed_data.get('cash_flow', {}):
+            processed_data['cash_flow'][_k] = _rotate_to_front(processed_data['cash_flow'][_k], data_year_index)
     
     # 数据完整性检查（关键字段 0/None 则视为缺失）
     _check_fn = getattr(DataProcessor, 'check_critical_data_completeness', None)
@@ -516,11 +530,11 @@ if analyze_button or st.session_state.analyzed:
     if override_dep_b:
         val = override_dep_b * B
         if isinstance(processed_data['income_statement'].get('depreciation'), list):
-            processed_data['income_statement']['depreciation'][data_year_index] = val
+            processed_data['income_statement']['depreciation'][0] = val
         else:
             processed_data['income_statement']['depreciation'] = val
         if 'depreciation_cf' in processed_data['cash_flow'] and isinstance(processed_data['cash_flow']['depreciation_cf'], list):
-            processed_data['cash_flow']['depreciation_cf'][data_year_index] = val
+            processed_data['cash_flow']['depreciation_cf'][0] = val
         if 'depreciation' in processed_data['cash_flow']:
             processed_data['cash_flow']['depreciation'] = val
     if override_capex_b is None:
@@ -528,7 +542,7 @@ if analyze_button or st.session_state.analyzed:
     if override_capex_b:
         val = override_capex_b * B
         if isinstance(processed_data['cash_flow'].get('capex'), list):
-            processed_data['cash_flow']['capex'][data_year_index] = val
+            processed_data['cash_flow']['capex'][0] = val
         else:
             processed_data['cash_flow']['capex'] = val
     if override_rou_b is None:
@@ -541,7 +555,7 @@ if analyze_button or st.session_state.analyzed:
     if override_rd_b:
         val = override_rd_b * B
         if isinstance(processed_data['income_statement'].get('rd_expense'), list):
-            processed_data['income_statement']['rd_expense'][data_year_index] = val
+            processed_data['income_statement']['rd_expense'][0] = val
         else:
             processed_data['income_statement']['rd_expense'] = val
     
@@ -1161,6 +1175,21 @@ V = NOPAT/r + (R-r)/r × Growth Investment
     
     with st.expander('📐 ROIC 与增长率 (g) 参数', expanded=False):
         st.caption('永续增长率 g 上限：原则上不超过 WACC 的 80% 或长期 GDP；成熟型如 WMT 推荐 g≈3%，高增长型可设超常期。')
+        roic_lease_interest = st.number_input(
+            'Lecture ROIC 的 Lease/Interest 项 ($B)',
+            min_value=-50.0,
+            max_value=50.0,
+            value=float(st.session_state.get('roic_lease_interest') or 0.0),
+            step=0.1,
+            key='roic_lease_interest',
+            help='用于课件 ROIC 分子：OI + D&A + Lease/Interest；默认 0 表示未手动补充。'
+        )
+        strict_course_mode = st.checkbox(
+            '严格课件模式（FV 允许为负，不使用启发式上限）',
+            value=True,
+            key='strict_course_mode',
+            help='开启后按课件主式计算 FV；当 ROIC < WACC 时，FV 为负值（增长摧毁价值）。'
+        )
         gdp_long_term = st.number_input('长期 GDP 预期 (%)', min_value=1, max_value=6, value=3, step=1, key='gdp_lt') / 100
         perpetual_cap_override = st.number_input('永续增长率上限覆盖 (%)，留空则用 max(80%×WACC, GDP)', min_value=0, max_value=15, value=0, step=1, key='g_cap_ov') / 100
         if perpetual_cap_override <= 0:
@@ -1172,7 +1201,8 @@ V = NOPAT/r + (R-r)/r × Growth Investment
     fv_adjustments = {
         'wacc': epv_results['wacc'],
         'tax_rate': user_adjustments_epv.get('tax_rate', 0.21),
-        'lease_and_interest_income': 0,
+        'lease_and_interest_income': (roic_lease_interest or 0) * B,
+        'strict_course_mode': bool(st.session_state.get('strict_course_mode', True)),
         'gdp_long_term': gdp_long_term,
         'perpetual_growth_cap_override': perpetual_cap_override,
         'supernormal_growth_years': supernormal_years if supernormal_years else 0,

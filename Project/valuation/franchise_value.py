@@ -296,8 +296,10 @@ class FranchiseValueCalculator:
         Returns:
             Dict: Franchise Value计算结果
         """
-        # 1. 获取ROIC（必须用 net 口径，否则重资产公司如沃尔玛 ROIC 被低估、FV 错误为 0）
-        roic_result = self.calculate_roic(method='net')
+        # 1. 获取ROIC。strict_course_mode 下默认使用 lecture 口径以贴合课件；否则沿用 net 口径。
+        strict_course_mode = bool(self.adjustments.get('strict_course_mode', False))
+        roic_method = 'lecture' if strict_course_mode else 'net'
+        roic_result = self.calculate_roic(method=roic_method)
         roic = roic_result['average_roic']
         nopat = roic_result['nopat']
         
@@ -321,61 +323,49 @@ class FranchiseValueCalculator:
         epv = nopat / wacc if wacc > 0 else 0
         
         # 5. 计算Franchise Value
-        # FV = (ROIC - WACC) / WACC × Growth Investment
-        
-        if roic > wacc:
-            # 有正的特许权价值（ROIC > WACC）
-            k = growth_result['k']
-            growth_investment = k * nopat
-            value_per_dollar = (roic - wacc) / wacc
-            
-            # 可选：NVDA 等 5 年超常增长期后回归 3%
-            super_years = self.adjustments.get('supernormal_growth_years', 0) or 0
-            super_g = self.adjustments.get('supernormal_g', g)
-            terminal_g = self.adjustments.get('terminal_g', gdp_long_term)
-            if super_years > 0 and wacc > terminal_g and (wacc - terminal_g) > 0.01:
-                # 两阶段：前 super_years 年按 super_g，之后永续 terminal_g
-                fv = 0
-                for t in range(1, super_years + 1):
-                    fv += growth_investment * (1 + super_g) ** t * value_per_dollar / (1 + wacc) ** t
-                # 终值：自 super_years+1 年起永续 growth_investment 按 terminal_g 增长
-                tv = (growth_investment * (1 + super_g) ** super_years * (1 + terminal_g) * value_per_dollar /
-                      (wacc - terminal_g) / (1 + wacc) ** super_years)
-                fv += tv
-                fv = min(fv, epv * 5)
-            elif wacc > g and (wacc - g) > 0.01:
-                # 标准永续增长模型：wacc > g
-                # FV = Growth Investment × (ROIC - WACC) / WACC / (WACC - g)
-                fv = growth_investment * value_per_dollar / (wacc - g)
-                
-                # 限制FV不超过EPV的5倍（合理性检查）
-                fv = min(fv, epv * 5)
-                
-            elif g >= wacc or (wacc - g) <= 0.01:
-                # g接近或超过wacc：使用简化模型
-                # 此时假设高增长有限期（如10年），之后回归正常
-                # FV = Growth Investment × (ROIC - WACC) / WACC × Duration Factor
-                
-                # 方法1：使用有限期模型（假设高增长持续10年）
-                high_growth_years = 10
-                discount_factor = sum([(1 / (1 + wacc)) ** year for year in range(1, high_growth_years + 1)])
-                
-                # 每年的增量价值
-                annual_value_creation = growth_investment * value_per_dollar
-                fv = annual_value_creation * discount_factor
-                
-                # 或者方法2：使用ROIC-WACC的简单倍数
-                # 对于g接近wacc的情况，使用更保守的估值
-                conservative_multiplier = 20  # 相当于5%的折现率
-                fv_alternative = growth_investment * value_per_dollar * conservative_multiplier
-                
-                # 取两者较小值（更保守）
-                fv = min(fv, fv_alternative, epv * 3)
-            else:
-                fv = 0
+        # 课件主式：FV = Growth Investment × (ROIC-WACC)/WACC /(WACC-g)
+        k = growth_result['k']
+        growth_investment = k * nopat
+        value_per_dollar = (roic - wacc) / wacc if wacc > 0 else 0
+
+        if strict_course_mode:
+            # 严格课件模式：允许 ROIC < WACC 时 FV 为负（增长摧毁价值）。
+            # 为避免奇点，仅在 g 逼近 WACC 时做数值保护。
+            g_safe = min(g, wacc - 0.005) if wacc > 0.005 else g
+            denom = (wacc - g_safe)
+            fv = growth_investment * value_per_dollar / denom if abs(denom) > 1e-9 else 0
         else:
-            # ROIC <= WACC，增长摧毁价值
-            fv = 0
+            # 启发式模式（历史行为）
+            if roic > wacc:
+                # 有正的特许权价值（ROIC > WACC）
+                super_years = self.adjustments.get('supernormal_growth_years', 0) or 0
+                super_g = self.adjustments.get('supernormal_g', g)
+                terminal_g = self.adjustments.get('terminal_g', gdp_long_term)
+                if super_years > 0 and wacc > terminal_g and (wacc - terminal_g) > 0.01:
+                    # 两阶段：前 super_years 年按 super_g，之后永续 terminal_g
+                    fv = 0
+                    for t in range(1, super_years + 1):
+                        fv += growth_investment * (1 + super_g) ** t * value_per_dollar / (1 + wacc) ** t
+                    tv = (growth_investment * (1 + super_g) ** super_years * (1 + terminal_g) * value_per_dollar /
+                          (wacc - terminal_g) / (1 + wacc) ** super_years)
+                    fv += tv
+                    fv = min(fv, epv * 5)
+                elif wacc > g and (wacc - g) > 0.01:
+                    fv = growth_investment * value_per_dollar / (wacc - g)
+                    fv = min(fv, epv * 5)
+                elif g >= wacc or (wacc - g) <= 0.01:
+                    high_growth_years = 10
+                    discount_factor = sum([(1 / (1 + wacc)) ** year for year in range(1, high_growth_years + 1)])
+                    annual_value_creation = growth_investment * value_per_dollar
+                    fv = annual_value_creation * discount_factor
+                    conservative_multiplier = 20
+                    fv_alternative = growth_investment * value_per_dollar * conservative_multiplier
+                    fv = min(fv, fv_alternative, epv * 3)
+                else:
+                    fv = 0
+            else:
+                # ROIC <= WACC，增长摧毁价值（启发式模式不展示负值）
+                fv = 0
         
         # 6. 总价值
         total_value = epv + fv
@@ -408,6 +398,7 @@ class FranchiseValueCalculator:
             'margin_of_safety': margin_of_safety,
             'fv_to_epv_ratio': fv / epv if epv > 0 else 0,
             'creates_value': roic > wacc,
+            'strict_course_mode': strict_course_mode,
             'roic_method': roic_result.get('roic_method', 'net'),
         }
     
