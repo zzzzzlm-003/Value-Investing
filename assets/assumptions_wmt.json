@@ -1,0 +1,11 @@
+{
+  "methodology": "Columbia Value Investing (AV / EPV / FV)",
+  "sample_ticker": "WMT (US)",
+  "report_year": "T (latest fiscal year)",
+  "smoothing": "3-year simple operating margin",
+  "tax_rate": "country default from config (US)",
+  "wacc": "CAPM + debt cost, then used in EPV and FV",
+  "growth_expense_method": "method2 (Revenue × 0.35%)",
+  "strict_course_mode": "ON (FV allows negative when ROIC < WACC)",
+  "fv_formula": "FV = GrowthInvestment × (ROIC-WACC)/WACC /(WACC-g)"
+}

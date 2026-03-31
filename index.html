@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 价值投资分析网站 | Columbia Value Investing</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="lang-switch">
+        <label for="langSelect" data-i18n="lang_label">语言 / Language</label>
+        <select id="langSelect">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <p class="tag">Columbia Value Investing × AI</p>
+      <h1 data-i18n="hero_title">AI 价值投资分析网站</h1>
+      <p class="sub" data-i18n="hero_sub">这是一个基于哥伦比亚大学价值投资课程（Graham & Dodd）方法论搭建的小型估值网站，用真实股票数据展示 AV / EPV / FV 三层估值框架。</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/zzzzzlm-003/Value-Investing" data-i18n="btn_repo">查看项目仓库</a>
+        <a class="btn" href="assets/sample_results.json" data-i18n="btn_json">下载结果 JSON</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="section">
+      <h2 data-i18n="section_results">真实样例结果（本地模型计算）</h2>
+      <div id="kpis" class="kpis"></div>
+      <p class="note"><span data-i18n="sample_line">样例标的</span>：<span id="companyName">-</span>（<span id="ticker">-</span>），<span data-i18n="analysis_date">分析日期</span>：<span id="analysisDate">-</span></p>
+      <p class="note"><span data-i18n="data_source">数据来源</span>：<span id="dataSource">-</span></p>
+    </section>
+
+    <section class="section grid2">
+      <article class="card">
+        <h3 data-i18n="assumptions_title">课件对标假设（本次样例）</h3>
+        <div id="assumptionsList" class="mini-list"></div>
+      </article>
+      <article class="card">
+        <h3 data-i18n="checks_title">公式校验与一致性检查</h3>
+        <div id="checksList" class="mini-list"></div>
+      </article>
+    </section>
+
+    <section class="section grid3">
+      <article class="card method-card">
+        <h3>AV（Asset Value）</h3>
+        <p data-i18n="av_desc">从账面权益出发，对 PPE、商誉、品牌、员工价值等进行调整，衡量资产安全垫。</p>
+      </article>
+      <article class="card method-card">
+        <h3>EPV（Earning Power Value）</h3>
+        <p data-i18n="epv_desc">基于可持续盈利能力（平滑利润 + 调整项 + WACC）估算企业在零增长假设下的价值。</p>
+      </article>
+      <article class="card method-card">
+        <h3>FV（Franchise Value）</h3>
+        <p data-i18n="fv_desc">当 `ROIC > WACC` 时增长创造价值；在严格课件模式下，`ROIC < WACC` 会得到负 FV（增长摧毁价值）。</p>
+      </article>
+    </section>
+
+    <section class="section grid2">
+      <article class="card">
+        <h3 data-i18n="valuation_chart_title">总估值对比（可交互）</h3>
+        <p class="note" data-i18n="valuation_chart_note">悬停查看金额、相对市值比例、相对总估值比例</p>
+        <div id="valuationChart" class="chart"></div>
+      </article>
+      <article class="card">
+        <h3 data-i18n="av_chart_title">AV 组件拆解（可交互）</h3>
+        <p class="note" data-i18n="av_chart_note">悬停查看每个组件金额及在 AV 中的占比</p>
+        <div id="avChart" class="chart"></div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2 data-i18n="logic_title">分析逻辑（简化）</h2>
+      <ul class="features">
+        <li data-i18n="logic_1">Step 1：抓取与清洗财务数据（资产负债表、利润表、现金流、市场数据）</li>
+        <li data-i18n="logic_2">Step 2：计算 AV（资产重估）与 EPV（持续盈利价值）</li>
+        <li data-i18n="logic_3">Step 3：比较 ROIC 与 WACC，计算 FV（增长价值）与总估值</li>
+        <li data-i18n="logic_4">Step 4：输出结构化结果并做可视化，便于快速决策与沟通</li>
+      </ul>
+    </section>
+
+    <section class="section card">
+      <h2 data-i18n="value_title">项目价值</h2>
+      <p data-i18n="value_desc">将课堂估值方法变成可复用工具链：数据获取 → 模型计算 → 可视化解释 → 报告导出。面向投研场景可快速复现并扩展到不同公司。</p>
+      <div class="doc-links">
+        <a class="btn" href="assets/formula_map.md" data-i18n="doc_formula">公式对照文档</a>
+        <a class="btn" href="assets/process_notes_wmt.md" data-i18n="doc_process">WMT 过程说明</a>
+        <a class="btn" href="assets/assumptions_wmt.json" data-i18n="doc_assumptions">WMT 假设 JSON</a>
+        <a class="btn" href="assets/known_gaps.md" data-i18n="doc_gaps">已知边界与限制</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Built with Python + Streamlit + Valuation Engine</div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

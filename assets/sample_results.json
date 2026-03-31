@@ -1,0 +1,116 @@
+{
+  "source": {
+    "provider": "yfinance",
+    "engine": "local valuation modules",
+    "note": "Real ticker sample generated from local run with course-aligned settings"
+  },
+  "assumptions": {
+    "methodology": "Columbia Value Investing (AV / EPV / FV)",
+    "sample_ticker": "WMT (US)",
+    "report_year": "T (latest fiscal year)",
+    "smoothing": "3-year simple operating margin",
+    "growth_expense_method": "method2 (Revenue × 0.35%)",
+    "strict_course_mode": "ON"
+  },
+  "summary": {
+    "ticker": "WMT",
+    "market": "US",
+    "company": "Walmart Inc.",
+    "analysis_date": "2026-03-31",
+    "market_cap_b": 987.42,
+    "av_b": 176.77,
+    "epv_b": 427.92,
+    "fv_b": 284.01,
+    "total_value_b": 711.93,
+    "epv_model_b": 316.75,
+    "wacc_pct": 8.13,
+    "roic_pct": 10.17,
+    "roic_net_pct": 13.34,
+    "roic_lecture_pct": 10.17,
+    "margin_of_safety_pct": -32.12
+  },
+  "components": {
+    "AV Components (B USD)": {
+      "Book Equity": 106.18,
+      "Current Asset Adj": 0.0,
+      "PPE Adj": 42.22,
+      "Goodwill Adj": 0.0,
+      "Operating Lease": 0.0,
+      "Brand Value": 17.67,
+      "Workforce Value": 10.71,
+      "Product Portfolio": 0.0
+    },
+    "EPV Components (B USD)": {
+      "Smoothed Op Income": 30.09,
+      "Extraordinary Adj": 0.0,
+      "Depreciation Adj": 0.0,
+      "Growth Expense Adj": 2.5,
+      "Adjusted NOPAT": 25.75
+    }
+  },
+  "consistency_checks": {
+    "EPV + FV == Total Value (round check)": "427.92 + 284.01 = 711.93 (reported 711.93)",
+    "ROIC vs WACC spread": "10.17% - 8.13% = 2.04%",
+    "ROIC lecture vs net": "lecture 10.17% / net 13.34%",
+    "EPV model vs FV-base EPV": "EPV model 316.75B, FV-base EPV 427.92B",
+    "strict_course_mode": "enabled"
+  },
+  "chart_data": {
+    "valuation_compare": [
+      {
+        "name": "Market Cap",
+        "value_b": 987.42
+      },
+      {
+        "name": "AV",
+        "value_b": 176.77
+      },
+      {
+        "name": "EPV",
+        "value_b": 427.92
+      },
+      {
+        "name": "FV",
+        "value_b": 284.01
+      },
+      {
+        "name": "Total Value",
+        "value_b": 711.93
+      }
+    ],
+    "av_breakdown": [
+      {
+        "name": "Book Equity",
+        "value_b": 106.18
+      },
+      {
+        "name": "Current Asset Adj",
+        "value_b": 0.0
+      },
+      {
+        "name": "PPE Adj",
+        "value_b": 42.22
+      },
+      {
+        "name": "Goodwill Adj",
+        "value_b": 0.0
+      },
+      {
+        "name": "Operating Lease",
+        "value_b": 0.0
+      },
+      {
+        "name": "Brand Value",
+        "value_b": 17.67
+      },
+      {
+        "name": "Workforce Value",
+        "value_b": 10.71
+      },
+      {
+        "name": "Product Portfolio",
+        "value_b": 0.0
+      }
+    ]
+  }
+}
