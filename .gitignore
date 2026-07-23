@@ -3,17 +3,9 @@ venv/
 __pycache__/
 *.py[cod]
 .DS_Store
-*.qkdownloading
 .env
 .env.*
-.vscode/
-# Course materials stay local (copyright / size)
 *.pdf
 *.xlsx
 *.xls
 *.docx
-*.pptx
-Course/Assignment/**/Material/
-Course/Assignment/**/Output/*.pdf
-# Keep markdown notes tracked
-!*.md
