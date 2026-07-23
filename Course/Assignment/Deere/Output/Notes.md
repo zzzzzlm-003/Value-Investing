@@ -1,1 +1,0 @@
-margin of financial service
